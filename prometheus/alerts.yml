@@ -1,0 +1,67 @@
+groups:
+  # ─── API Health Alerts ─────────────────────────────────────────────────────
+  - name: stock_prediction_api
+    rules:
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(stock_api_latency_seconds_bucket[5m])) > 2.0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency detected"
+          description: "P95 latency is {{ $value | humanizeDuration }} (threshold: 2s) for job {{ $labels.job }}"
+
+      - alert: HighErrorRate
+        expr: |
+          rate(stock_api_requests_total{status="error"}[5m])
+          /
+          rate(stock_api_requests_total[5m]) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on Stock Prediction API"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: APIDown
+        expr: up{job="stock-prediction-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Stock Prediction API is down"
+          description: "No healthy instances of stock-prediction-api found"
+
+      - alert: LowModelAccuracy
+        expr: stock_model_r2_score < 0.7
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model R² score dropped below threshold"
+          description: "R² for {{ $labels.symbol }} = {{ $value }} (threshold: 0.70). Consider retraining."
+
+  # ─── Kubernetes Pod Alerts ─────────────────────────────────────────────────
+  - name: kubernetes_pods
+    rules:
+
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total{namespace="stock-prediction"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod is crash-looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently"
+
+      - alert: HighMemoryUsage
+        expr: |
+          container_memory_usage_bytes{namespace="stock-prediction"}
+          / container_spec_memory_limit_bytes{namespace="stock-prediction"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory usage > 85%"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit"

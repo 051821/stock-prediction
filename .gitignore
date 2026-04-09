@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
+.coverage
+
+# Environment
+.env
+*.env.local
+
+# Secrets — never commit these
+*.pem
+*.key
+kubeconfig
+kubeconfig.yaml
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Virtual Environment
+venv/
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (large files should go in object storage, not git)
+final_stock_data.csv
+eksctl.tar.gz
+.env.example

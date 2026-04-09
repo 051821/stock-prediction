@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: stock-prediction
+data:
+  alerts.yml: |
+    groups:
+      - name: stock_api
+        rules:
+          - alert: APIDown
+            expr: up{job="stock-prediction-api"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Stock Prediction API is down"
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      - job_name: stock-prediction-api
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["stock-prediction"]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            separator: ":"
+            target_label: __address__
+            regex: (.+);(.+)
+            replacement: $1:$2
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace

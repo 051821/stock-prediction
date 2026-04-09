@@ -1,0 +1,26 @@
+---
+# ─── Stock Data ConfigMap ─────────────────────────────────────────────────────
+# Mounts stock_data.csv into the API pod at /app/stock_data.csv.
+# In production, replace this with a PersistentVolumeClaim backed by cloud storage
+# (GCS, S3, Azure Blob) or a CronJob that refreshes the data daily.
+#
+# To generate this file from your CSV:
+#   kubectl create configmap stock-data-configmap \
+#     --namespace stock-prediction \
+#     --from-file=stock_data.csv=app/stock_data.csv
+#
+# This YAML is a placeholder — run the command above, or use an init container
+# that pulls the CSV from object storage on pod startup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-data-configmap
+  namespace: stock-prediction
+  annotations:
+    description: "Mount point for stock price CSV data. Regenerate with kubectl create configmap."
+data:
+  # File content injected at deploy time via:
+  # kubectl create configmap stock-data-configmap --from-file=stock_data.csv -n stock-prediction
+  stock_data.csv: |
+    date,Open,High,Low,Close,Volume,company_name
+    # Populated at deploy time - see annotation above

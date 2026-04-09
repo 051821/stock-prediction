@@ -1,0 +1,123 @@
+---
+# ─── API Deployment ───────────────────────────────────────────────────────────
+# WHY KUBERNETES DEPLOYMENT?
+#   - Declarative desired state: K8s continuously reconciles toward this spec
+#   - Rolling updates: zero-downtime deploys (maxSurge/maxUnavailable)
+#   - Self-healing: crashed pods are automatically restarted
+#   - Replica management: keeps exactly `replicas` instances running at all times
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-prediction-api
+  namespace: stock-prediction
+  labels:
+    app: stock-prediction-api
+    version: "1.0.0"
+  annotations:
+    # Prometheus will auto-discover this deployment for scraping
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  replicas: 2                         # 2 pods = HA without over-provisioning
+  selector:
+    matchLabels:
+      app: stock-prediction-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                     # Spin up 1 extra pod during update
+      maxUnavailable: 0               # Never drop below desired replicas
+  template:
+    metadata:
+      labels:
+        app: stock-prediction-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Security context: run as non-root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      containers:
+        - name: api
+          image: 193926907633.dkr.ecr.ap-south-1.amazonaws.com/stock-prediction-api:latest  # replaced by CI/CD with SHA tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: stock-prediction-config
+          env:
+            - name: ALPHAVANTAGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stock-prediction-secrets
+                  key: alphavantage-api-key
+                  optional: true
+
+          # ── Resource limits prevent noisy-neighbour issues ──────────────
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          # ── Liveness probe: restart pod if app hangs ─────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # ── Readiness probe: only route traffic when app is ready ─────────
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          volumeMounts:
+            - name: stock-data
+              mountPath: /app/stock_data.csv
+              subPath: stock_data.csv
+
+      volumes:
+        - name: stock-data
+          configMap:
+            name: stock-data-configmap
+
+---
+# ─── API Service ──────────────────────────────────────────────────────────────
+# WHY SERVICE?
+#   - Stable virtual IP (ClusterIP) regardless of pod churn
+#   - Internal DNS: stock-prediction-api-service.stock-prediction.svc.cluster.local
+#   - Load balances across all healthy replicas
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-prediction-api-service
+  namespace: stock-prediction
+  labels:
+    app: stock-prediction-api
+spec:
+  selector:
+    app: stock-prediction-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP

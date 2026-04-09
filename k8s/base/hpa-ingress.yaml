@@ -1,0 +1,113 @@
+---
+# ─── Horizontal Pod Autoscaler ────────────────────────────────────────────────
+# WHY HPA?
+#   Stock market activity is BURSTY (market open/close, earnings).
+#   HPA scales pods up when CPU > 70% and scales back down when traffic drops.
+#   This means you pay for compute only when needed — not 24/7 over-provisioning.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: stock-prediction-api-hpa
+  namespace: stock-prediction
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: stock-prediction-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# ─── Ingress ──────────────────────────────────────────────────────────────────
+# Exposes the API and Streamlit UI to external traffic via a single load balancer.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stock-prediction-ingress
+  namespace: stock-prediction
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: stock.yourdomain.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: stock-prediction-api-service
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stock-prediction-ui-service
+                port:
+                  number: 8054
+
+---
+# ─── Streamlit UI Deployment ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-prediction-ui
+  namespace: stock-prediction
+  labels:
+    app: stock-prediction-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stock-prediction-ui
+  template:
+    metadata:
+      labels:
+        app: stock-prediction-ui
+    spec:
+      containers:
+        - name: ui
+          image: 193926907633.dkr.ecr.ap-south-1.amazonaws.com/stock-prediction-ui:latest
+          ports:
+            - containerPort: 8054
+          env:
+            - name: API_URL
+              value: "http://stock-prediction-api-service:8000"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-prediction-ui-service
+  namespace: stock-prediction
+spec:
+  selector:
+    app: stock-prediction-ui
+  ports:
+    - port: 8054
+      targetPort: 8054
+  type: ClusterIP

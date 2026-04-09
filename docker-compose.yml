@@ -1,0 +1,92 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Local development stack
+#
+# Mirrors the Kubernetes architecture locally:
+#   API → FastAPI (port 8000)
+#   UI  → Streamlit (port 8501)
+#   MON → Prometheus (port 9090) + Grafana (port 3000)
+#
+# Usage:
+#   docker-compose up --build
+#   docker-compose down -v   (tear down + remove volumes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI Prediction API ──────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: stock-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-demo}
+      - STOCK_DATA_PATH=/app/stock_data.csv
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./app/stock_data.csv:/app/stock_data.csv:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Streamlit UI ──────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    container_name: stock-ui
+    ports:
+      - "8054:8054"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus-local.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

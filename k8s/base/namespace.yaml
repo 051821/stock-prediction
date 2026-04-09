@@ -1,0 +1,23 @@
+---
+# ─── Namespace ────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stock-prediction
+  labels:
+    app: stock-prediction
+    monitoring: "true"
+
+---
+# ─── ConfigMap ────────────────────────────────────────────────────────────────
+# Why ConfigMap? Externalise configuration from the container image.
+# Change env vars without rebuilding Docker images.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-prediction-config
+  namespace: stock-prediction
+data:
+  STOCK_DATA_PATH: "/app/stock_data.csv"
+  LOG_LEVEL: "INFO"
+  API_URL: "http://stock-prediction-api-service:8000"
