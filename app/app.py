@@ -1,81 +1,67 @@
-import streamlit as st
-import requests
 import os
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+import requests
+import streamlit as st
 
-st.set_page_config(
-    page_title="📈 Stock Prediction System",
-    page_icon="📈",
-    layout="wide",
-)
+API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
+DEFAULT_SYMBOLS = ["AAPL", "GOOG", "MSFT", "AMZN"]
 
-st.title("📈 Real-Time Stock Price Prediction")
-st.caption("Cloud-native ML system powered by Kubernetes · Prometheus · Grafana")
 
-# ─── Sidebar ────────────────────────────────────────────────────────────────
+def fetch_symbols() -> list[str]:
+    try:
+        response = requests.get(f"{API_URL}/symbols", timeout=5)
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("supported_symbols", DEFAULT_SYMBOLS)
+    except requests.RequestException:
+        return DEFAULT_SYMBOLS
+
+
+def check_health() -> bool:
+    try:
+        response = requests.get(f"{API_URL}/health", timeout=5)
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+st.set_page_config(page_title="Stock Prediction System", page_icon=":chart_with_upwards_trend:", layout="wide")
+
+st.title("Real-Time Stock Price Prediction")
+st.caption("Small stock prediction demo with FastAPI, Streamlit, and Prometheus metrics.")
+
+symbols = fetch_symbols()
+
 with st.sidebar:
-    st.header("⚙️ Settings")
-    symbol = st.selectbox("Select Stock Symbol", ["AAPL", "GOOG", "MSFT", "AMZN"])
-    st.markdown("---")
+    st.header("Settings")
+    symbol = st.selectbox("Select Stock Symbol", symbols)
+    st.divider()
     st.markdown("**System Links**")
-    st.markdown("- [Grafana Dashboard](http://localhost:3000)")
-    st.markdown("- [Prometheus Metrics](http://localhost:9090)")
     st.markdown("- [API Docs](http://localhost:8000/docs)")
+    st.markdown("- [Prometheus](http://localhost:9090)")
+    st.markdown("- [Grafana](http://localhost:3000)")
 
-# ─── Prediction ─────────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns([2, 2, 2])
+col1, col2, col3 = st.columns(3)
 
-if st.button("🚀 Run Prediction", type="primary", use_container_width=True):
+if st.button("Run Prediction", type="primary", use_container_width=True):
     with st.spinner(f"Fetching prediction for {symbol}..."):
         try:
-            resp = requests.get(f"{API_URL}/predict/{symbol}", timeout=30)
-            resp.raise_for_status()
-            result = resp.json()
+            response = requests.get(f"{API_URL}/predict/{symbol}", timeout=30)
+            response.raise_for_status()
+            result = response.json()
 
-            col1.metric(
-                label=f"💰 {symbol} Predicted Close",
-                value=f"${result['predicted_close']:.2f}",
-            )
-            col2.metric(
-                label="📊 Model R² Score",
-                value=f"{result['model_r2']:.4f}",
-                help="Closer to 1.0 = better model fit",
-            )
-            col3.metric(
-                label="⚡ Latency",
-                value=f"{result['latency_seconds'] * 1000:.1f} ms",
-            )
+            col1.metric("Predicted Close", f"${result['predicted_close']:.2f}")
+            col2.metric("Model R2", f"{result['model_r2']:.4f}")
+            col3.metric("Latency", f"{result['latency_seconds'] * 1000:.1f} ms")
 
-            st.success(f"✅ Predicted next close price for **{symbol}**: **${result['predicted_close']:.2f}**")
+            st.success(f"Predicted next close for {symbol}: ${result['predicted_close']:.2f}")
             st.json(result)
+        except requests.RequestException as exc:
+            st.error(f"API request failed: {exc}")
 
-        except requests.exceptions.ConnectionError:
-            st.error("❌ Cannot connect to API. Is the backend running?")
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
-
-# ─── System Health ───────────────────────────────────────────────────────────
-st.markdown("---")
-st.subheader("🏥 System Health")
-
-try:
-    health = requests.get(f"{API_URL}/health", timeout=5)
-    if health.status_code == 200:
-        st.success("✅ API is healthy and running")
-    else:
-        st.warning("⚠️ API returned unexpected status")
-except Exception:
-    st.error("❌ API is unreachable")
-
-# ─── Info cards ──────────────────────────────────────────────────────────────
-st.markdown("---")
-st.subheader("🏗️ System Architecture")
-
-arch_col1, arch_col2, arch_col3 = st.columns(3)
-with arch_col1:
-    st.info("**☸️ Kubernetes**\nOrchestrates API pods with auto-scaling, rolling deployments, and self-healing.")
-with arch_col2:
-    st.info("**📊 Prometheus**\nScrapes /metrics every 15s — tracks latency, request counts, model accuracy.")
-with arch_col3:
-    st.info("**📈 Grafana**\nVisualises Prometheus data in real-time dashboards with alerting rules.")
+st.divider()
+st.subheader("System Health")
+if check_health():
+    st.success("API is healthy and reachable.")
+else:
+    st.error("API is unreachable.")
