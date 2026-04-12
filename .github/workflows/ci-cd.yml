@@ -1,222 +1,208 @@
 name: CI/CD — Stock Prediction System
 
 on:
-push:
-branches: [main, develop]
-pull_request:
-branches: [main]
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# ─── Why GitHub Actions? ──────────────────────────────────────────────────────
+# Automates the entire delivery pipeline: lint → test → build → push → deploy.
+# Every commit to main triggers a zero-downtime rolling update on Kubernetes.
+# Secrets (API keys, registry credentials) are stored in GitHub Secrets —
+# never in the codebase.
 
 env:
-REGISTRY: ghcr.io
-IMAGE_NAME: ${{ github.repository }}/stock-prediction-api
-K8S_NAMESPACE: stock-prediction
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/stock-prediction-api
+  K8S_NAMESPACE: stock-prediction
 
 jobs:
+  # ─── 1. Lint & Static Analysis ──────────────────────────────────────────────
+  lint:
+    name: 🔍 Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-# ─── 1. Lint & Static Analysis ──────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
-lint:
-name: 🔍 Lint & Type Check
-runs-on: ubuntu-latest
+      - name: Install linting tools
+        run: pip install ruff mypy
 
-```
-steps:
-  - uses: actions/checkout@v4
+      - name: Ruff lint
+        run: ruff check app/
 
-  - name: Set up Python 3.11
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.11"
-      cache: pip
+      - name: Type check (mypy)
+        run: mypy app/ --ignore-missing-imports
 
-  - name: Install dependencies + lint tools
-    run: |
-      pip install -r app/requirements.txt
-      pip install ruff mypy types-requests
+  # ─── 2. Unit & Integration Tests ────────────────────────────────────────────
+  test:
+    name: 🧪 Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
 
-  - name: Ruff lint
-    run: ruff check app/
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
-  - name: Type check (mypy)
-    run: mypy app/
-```
+      - name: Install dependencies
+        run: pip install -r app/requirements.txt
 
-# ─── 2. Unit & Integration Tests ────────────────────────────────────────────
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=70
 
-test:
-name: 🧪 Tests
-runs-on: ubuntu-latest
-needs: lint
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
-```
-steps:
-  - uses: actions/checkout@v4
+  # ─── 3. Build & Push Docker Image ───────────────────────────────────────────
+  build:
+    name: 🐳 Build & Push Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    permissions:
+      contents: read
+      packages: write
 
-  - name: Set up Python 3.11
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.11"
-      cache: pip
+    steps:
+      - uses: actions/checkout@v4
 
-  - name: Install dependencies
-    run: pip install -r app/requirements.txt
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  - name: Run tests with coverage
-    run: |
-      pytest tests/ -v \
-        --cov=app \
-        --cov-report=xml \
-        --cov-report=term-missing \
-        --cov-fail-under=70
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
 
-  - name: Upload coverage report
-    uses: actions/upload-artifact@v4
-    with:
-      name: coverage-report
-      path: coverage.xml
-```
+      - name: Set up Docker Buildx (for layer caching)
+        uses: docker/setup-buildx-action@v3
 
-# ─── 3. Build & Push Docker Image ───────────────────────────────────────────
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha            # Use GitHub Actions cache for layers
+          cache-to: type=gha,mode=max
 
-build:
-name: 🐳 Build & Push Image
-runs-on: ubuntu-latest
-needs: test
-if: github.event_name == 'push'
+  # ─── 4. Security Scan ────────────────────────────────────────────────────────
+  security-scan:
+    name: 🔒 Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1          # Fail pipeline on CRITICAL/HIGH vulnerabilities
 
-```
-outputs:
-  image-tag: ${{ steps.meta.outputs.tags }}
-  image-digest: ${{ steps.build.outputs.digest }}
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
 
-permissions:
-  contents: read
-  packages: write
+  # ─── 5. Deploy to Kubernetes ─────────────────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [build, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production            # Requires manual approval in GitHub UI
 
-steps:
-  - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  - name: Log in to GitHub Container Registry
-    uses: docker/login-action@v3
-    with:
-      registry: ${{ env.REGISTRY }}
-      username: ${{ github.actor }}
-      password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.29.0
 
-  - name: Extract Docker metadata
-    id: meta
-    uses: docker/metadata-action@v5
-    with:
-      images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      tags: |
-        type=sha,prefix=sha-,format=short
-        type=ref,event=branch
-        type=raw,value=latest,enable={{is_default_branch}}
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
 
-  - name: Set up Docker Buildx
-    uses: docker/setup-buildx-action@v3
+      - name: Extract short SHA
+        id: sha
+        run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-  - name: Build and push
-    id: build
-    uses: docker/build-push-action@v5
-    with:
-      context: .
-      push: true
-      tags: ${{ steps.meta.outputs.tags }}
-      labels: ${{ steps.meta.outputs.labels }}
-      cache-from: type=gha
-      cache-to: type=gha,mode=max
-```
+      - name: Update image tag in deployment
+        run: |
+          kubectl set image deployment/stock-prediction-api \
+            api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.SHORT_SHA }} \
+            --namespace=${{ env.K8S_NAMESPACE }}
 
-# ─── 4. Security Scan ────────────────────────────────────────────────────────
+      - name: Wait for rollout to complete
+        run: |
+          kubectl rollout status deployment/stock-prediction-api \
+            --namespace=${{ env.K8S_NAMESPACE }} \
+            --timeout=300s
 
-security-scan:
-name: 🔒 Security Scan (Trivy)
-runs-on: ubuntu-latest
-needs: build
-if: github.event_name == 'push'
+      - name: Verify deployment health
+        run: |
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=stock-prediction-api
+          kubectl get hpa -n ${{ env.K8S_NAMESPACE }}
 
-```
-steps:
-  - name: Run Trivy scanner
-    uses: aquasecurity/trivy-action@master
-    with:
-      image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-      format: sarif
-      output: trivy-results.sarif
-      severity: CRITICAL,HIGH
-      exit-code: 1
+      - name: Post deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`sha-${{ steps.sha.outputs.SHORT_SHA }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: \`${{ env.K8S_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Rolled out successfully" >> $GITHUB_STEP_SUMMARY
 
-  - name: Upload Trivy results
-    uses: github/codeql-action/upload-sarif@v3
-    if: always()
-    with:
-      sarif_file: trivy-results.sarif
-```
-
-# ─── 5. Deploy to Kubernetes ─────────────────────────────────────────────────
-
-deploy:
-name: 🚀 Deploy to Kubernetes
-runs-on: ubuntu-latest
-needs: [build, security-scan]
-if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-environment: production
-
-```
-steps:
-  - uses: actions/checkout@v4
-
-  - name: Set up kubectl
-    uses: azure/setup-kubectl@v3
-    with:
-      version: v1.29.0
-
-  - name: Configure kubeconfig
-    run: |
-      mkdir -p ~/.kube
-      echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-      chmod 600 ~/.kube/config
-
-  - name: Extract short SHA
-    id: sha
-    run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
-
-  - name: Update image
-    run: |
-      kubectl set image deployment/stock-prediction-api \
-        api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.SHORT_SHA }} \
-        --namespace=${{ env.K8S_NAMESPACE }}
-
-  - name: Wait for rollout
-    run: |
-      kubectl rollout status deployment/stock-prediction-api \
-        --namespace=${{ env.K8S_NAMESPACE }} \
-        --timeout=300s
-
-  - name: Verify deployment
-    run: |
-      kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=stock-prediction-api
-      kubectl get hpa -n ${{ env.K8S_NAMESPACE }}
-```
-
-# ─── 6. Notify on Failure ────────────────────────────────────────────────────
-
-notify-failure:
-name: 📢 Notify on Failure
-runs-on: ubuntu-latest
-needs: [lint, test, build, security-scan, deploy]
-if: failure()
-
-```
-steps:
-  - name: Send Slack notification
-    uses: slackapi/slack-github-action@v1.26.0
-    with:
-      payload: |
-        {
-          "text": "❌ Pipeline failed for `${{ github.repository }}` on branch `${{ github.ref_name }}`\nCommit: ${{ github.sha }}\nSee: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        }
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-```
+  # ─── 6. Notify on Failure ────────────────────────────────────────────────────
+  notify-failure:
+    name: 📢 Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, security-scan, deploy]
+    if: failure()
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ Pipeline failed for `${{ github.repository }}` on branch `${{ github.ref_name }}`\nCommit: ${{ github.sha }}\nSee: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
