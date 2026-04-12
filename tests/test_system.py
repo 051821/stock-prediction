@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-
 from app.api import app
 from app.data import get_stock_data
 from app.model import get_model_metrics, predict, train_model
