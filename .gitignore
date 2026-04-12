@@ -43,3 +43,4 @@ Thumbs.db
 final_stock_data.csv
 eksctl.tar.gz
 .env.example
+k8s/base/secrets-template.yaml

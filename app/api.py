@@ -9,7 +9,6 @@ from metrics import (
 )
 import time
 import logging
-import os
 
 # ─── Logging ───────────────────────────────────────────────────────────────
 logging.basicConfig(

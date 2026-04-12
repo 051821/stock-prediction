@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-import pandas as pd
-import plotly.graph_objects as go
 import os
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
