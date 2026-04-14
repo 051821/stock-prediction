@@ -9,6 +9,7 @@ PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "").rstrip("/")
 GRAFANA_URL = os.getenv("GRAFANA_URL", "").rstrip("/")
 API_TIMEOUT_SECONDS = int(os.getenv("API_TIMEOUT_SECONDS", "15"))
 DEFAULT_SYMBOLS = ["AAPL", "GOOG", "MSFT", "AMZN"]
+USING_LOCAL_API_DEFAULT = API_URL == "http://localhost:8000"
 
 
 def fetch_symbols() -> list[str]:
@@ -41,6 +42,8 @@ with st.sidebar:
     st.header("Settings")
     symbol = st.selectbox("Select Stock Symbol", symbols)
     st.caption(f"API URL: {API_URL}")
+    if USING_LOCAL_API_DEFAULT:
+        st.warning("The UI is using the default local API URL. Set API_URL in your deployment environment.")
     st.divider()
     st.markdown("**System Links**")
     st.markdown(f"- [API Docs]({API_DOCS_URL})")
@@ -76,4 +79,18 @@ else:
     st.error("API is unreachable.")
     if health_error:
         st.caption(f"Health check error: {health_error}")
-    st.caption("If this is hosted on Render, confirm the UI service has API_URL set to your deployed API URL.")
+    if USING_LOCAL_API_DEFAULT:
+        st.caption("This deployment is still pointing to localhost. On Render, set API_URL to your deployed API service URL and redeploy the UI.")
+    else:
+        st.caption("If this is hosted on Render, confirm the API service is awake and the API_URL value is correct.")
+
+st.divider()
+st.subheader("Monitoring")
+if PROMETHEUS_URL or GRAFANA_URL:
+    st.info("Prometheus and Grafana are optional monitoring tools.")
+    if not PROMETHEUS_URL:
+        st.caption("Prometheus URL is not configured.")
+    if not GRAFANA_URL:
+        st.caption("Grafana URL is not configured.")
+else:
+    st.caption("Prometheus and Grafana are optional. You do not need to run them for the API and UI to work.")
