@@ -4,6 +4,9 @@ import requests
 import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
+API_DOCS_URL = os.getenv("API_DOCS_URL", f"{API_URL}/docs").rstrip("/")
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "").rstrip("/")
+GRAFANA_URL = os.getenv("GRAFANA_URL", "").rstrip("/")
 DEFAULT_SYMBOLS = ["AAPL", "GOOG", "MSFT", "AMZN"]
 
 
@@ -37,9 +40,11 @@ with st.sidebar:
     symbol = st.selectbox("Select Stock Symbol", symbols)
     st.divider()
     st.markdown("**System Links**")
-    st.markdown("- [API Docs](http://localhost:8000/docs)")
-    st.markdown("- [Prometheus](http://localhost:9090)")
-    st.markdown("- [Grafana](http://localhost:3000)")
+    st.markdown(f"- [API Docs]({API_DOCS_URL})")
+    if PROMETHEUS_URL:
+        st.markdown(f"- [Prometheus]({PROMETHEUS_URL})")
+    if GRAFANA_URL:
+        st.markdown(f"- [Grafana]({GRAFANA_URL})")
 
 col1, col2, col3 = st.columns(3)
 

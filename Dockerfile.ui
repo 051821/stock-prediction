@@ -12,7 +12,7 @@ USER appuser
 EXPOSE 8054
  
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8054/_stcore/health')"
+    CMD sh -c "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8054}/_stcore/health')\""
  
-CMD ["streamlit", "run", "app.py", "--server.port=8054", "--server.address=0.0.0.0", "--server.headless=true"]
+CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT:-8054} --server.address=0.0.0.0 --server.headless=true"]
  
