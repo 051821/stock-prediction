@@ -37,3 +37,15 @@ CACHE_HITS = Counter(
     "stock_model_cache_hits_total",
     "Number of times a cached model was reused (avoids retraining)",
 )
+
+MODEL_MAE = Gauge(
+    "stock_model_mae_usd",
+    "Mean absolute error of the trained model on holdout data in USD",
+    ["symbol"],
+)
+
+DATA_POINTS_USED = Gauge(
+    "stock_model_training_data_points",
+    "Number of data points used for model training and validation",
+    ["symbol"],
+)

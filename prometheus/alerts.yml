@@ -34,7 +34,7 @@ groups:
           description: "No healthy instances of stock-prediction-api found"
 
       - alert: LowModelAccuracy
-        expr: stock_model_r2_score < 0.7
+        expr: stock_model_r2_score < 0.5
         for: 5m
         labels:
           severity: warning

@@ -61,7 +61,7 @@ spec:
               service:
                 name: stock-prediction-ui-service
                 port:
-                  number: 8054
+                  number: 8504
 
 ---
 # ─── Streamlit UI Deployment ──────────────────────────────────────────────────
@@ -85,8 +85,9 @@ spec:
       containers:
         - name: ui
           image: 193926907633.dkr.ecr.ap-south-1.amazonaws.com/stock-prediction-ui:latest
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8054
+            - containerPort: 8504
           env:
             - name: API_URL
               value: "http://stock-prediction-api-service:8000"
@@ -108,6 +109,6 @@ spec:
   selector:
     app: stock-prediction-ui
   ports:
-    - port: 8054
-      targetPort: 8054
+    - port: 8504
+      targetPort: 8504
   type: ClusterIP

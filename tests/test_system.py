@@ -120,6 +120,16 @@ def test_predict_valid_symbol() -> None:
     payload = response.json()
     assert payload["predicted_close"] > 0
     assert "model_r2" in payload
+    assert payload["prediction_horizon"] == "next trading day close"
+
+
+def test_history_endpoint_returns_series() -> None:
+    response = request_json("GET", "/history/AAPL?days=30")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "AAPL"
+    assert payload["history"]
+    assert "close" in payload["history"][0]
 
 
 def test_predict_invalid_symbol() -> None:

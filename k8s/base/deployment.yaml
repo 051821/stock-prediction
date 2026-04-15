@@ -55,13 +55,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: stock-prediction-config
-          env:
-            - name: ALPHAVANTAGE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: stock-prediction-secrets
-                  key: alphavantage-api-key
-                  optional: true
 
           # ── Resource limits prevent noisy-neighbour issues ──────────────
           resources:

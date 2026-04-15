@@ -25,7 +25,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-demo}
       - STOCK_DATA_PATH=/app/stock_data.csv
       - LOG_LEVEL=INFO
     volumes:
@@ -45,7 +44,7 @@ services:
       dockerfile: Dockerfile.ui
     container_name: stock-ui
     ports:
-      - "8054:8054"
+      - "8504:8504"
     environment:
       - API_URL=http://api:8000
     depends_on:

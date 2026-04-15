@@ -1,117 +1,212 @@
 {
-  "title": "Stock Prediction System",
-  "uid": "stock-pred-v1",
-  "schemaVersion": 38,
-  "refresh": "15s",
-  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
   "panels": [
     {
       "id": 1,
-      "title": "API Requests per Second",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-      "targets": [
-        {
-          "expr": "rate(stock_api_requests_total[1m])",
-          "legendFormat": "{{symbol}} - {{status}}"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "title": "P95 API Latency (seconds)",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, rate(stock_api_latency_seconds_bucket[5m]))",
-          "legendFormat": "P95 - {{symbol}}"
-        },
-        {
-          "expr": "histogram_quantile(0.50, rate(stock_api_latency_seconds_bucket[5m]))",
-          "legendFormat": "P50 - {{symbol}}"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "title": "Latest Predicted Prices (USD)",
+      "title": "API Success Rate",
       "type": "stat",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 6 },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "stock_predicted_price_usd",
-          "legendFormat": "{{symbol}}"
-        }
-      ],
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area"
-      }
-    },
-    {
-      "id": 4,
-      "title": "Model R² Score per Symbol",
-      "type": "gauge",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
-      "targets": [
-        {
-          "expr": "stock_model_r2_score",
-          "legendFormat": "{{symbol}}"
-        }
-      ],
-      "options": {
-        "minValue": 0,
-        "maxValue": 1,
-        "thresholds": {
-          "steps": [
-            { "color": "red",    "value": 0   },
-            { "color": "yellow", "value": 0.7 },
-            { "color": "green",  "value": 0.9 }
-          ]
-        }
-      }
-    },
-    {
-      "id": 5,
-      "title": "Active Requests (in-flight)",
-      "type": "stat",
-      "gridPos": { "x": 0, "y": 14, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "stock_api_active_requests", "legendFormat": "Active" }
-      ]
-    },
-    {
-      "id": 6,
-      "title": " Model Cache Hits",
-      "type": "stat",
-      "gridPos": { "x": 6, "y": 14, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "stock_model_cache_hits_total", "legendFormat": "Cache Hits" }
-      ]
-    },
-    {
-      "id": 7,
-      "title": "Error Rate (%)",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 4 },
-      "targets": [
-        {
-          "expr": "rate(stock_api_requests_total{status='error'}[5m]) / rate(stock_api_requests_total[5m]) * 100",
-          "legendFormat": "Error Rate %"
+          "expr": "100 * sum(rate(stock_api_requests_total{status=\"success\"}[5m])) / sum(rate(stock_api_requests_total[5m]))",
+          "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
           "thresholds": {
             "steps": [
-              { "color": "green",  "value": 0 },
-              { "color": "yellow", "value": 1 },
-              { "color": "red",    "value": 5 }
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 90 },
+              { "color": "green", "value": 99 }
             ]
           }
         }
       }
+    },
+    {
+      "id": 2,
+      "title": "P95 Latency",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(stock_api_latency_seconds_bucket[5m])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Requests/sec",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(stock_api_requests_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active Requests",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stock_api_active_requests",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Traffic by Status",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(stock_api_requests_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Latency by Symbol",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, symbol) (rate(stock_api_latency_seconds_bucket[5m])))",
+          "legendFormat": "P50 {{symbol}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, symbol) (rate(stock_api_latency_seconds_bucket[5m])))",
+          "legendFormat": "P95 {{symbol}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Model R2 Score",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 7 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stock_model_r2_score",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Model MAE",
+      "type": "gauge",
+      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 7 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stock_model_mae_usd",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Training Data Points",
+      "type": "bargauge",
+      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 7 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stock_model_training_data_points",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Predicted Price",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 16, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "stock_predicted_price_usd",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Error Rate",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(stock_api_requests_total{status=\"error\"}[5m])) / sum(rate(stock_api_requests_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
     }
-  ]
+  ],
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "title": "Stock Prediction Command Center",
+  "uid": "stock-pred-command-center",
+  "version": 1
 }
